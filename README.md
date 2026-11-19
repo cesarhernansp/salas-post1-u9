@@ -316,3 +316,45 @@ El polling de `TECL.ASM` es inaceptable en cualquier programa que deba seguir ha
 
 ![Decisión 3](capturas/p2_cp5_decision1.png)
 ![Decisión 4](capturas/p2_cp5_decision2.png)
+
+---
+
+# Resumen de la entrega
+
+## Archivos
+
+| Parte | Fuente | Ejecutable | Checkpoint |
+|---|---|---|---|
+| 1 | `U9P1/TECL.ASM` | `TECL.COM` | 1 |
+| 1 | `U9P1/POLL_T.ASM` | `POLL_T.COM` | 2 |
+| 1 | `U9P1/LPT_1.ASM` (`LPT1.ASM` en la guía) | `LPT_1.COM` | 3 |
+| 1 | `U9P1/MULTI_ST.ASM` | `MULTI_ST.COM` | 4 |
+| 1 | `U9P1/RETENER.ASM` (auxiliar de demostración) | `RETENER.COM` | 4 |
+| 2 | `U9P2/ISR_KB.ASM` | `ISR_KB.COM` | 1 |
+| 2 | `U9P2/MASK_KB.ASM` | `MASK_KB.COM` | 2 |
+| 2 | `U9P2/ISR_CHAIN.ASM` | `ISR_CHAIN.COM` | 3 |
+| 2 | `U9P2/ISR_TIME.ASM` | `ISR_TIME.COM` | 4 |
+
+El checkpoint 5 de cada parte son las decisiones técnicas de este README (Pasos 6 y 7 de la Parte 1, Pasos 5 y 6 de la Parte 2). Los nueve programas se ensamblaron de nuevo desde cero con `nasm -f bin` sin errores ni advertencias, y producen exactamente los `.COM` versionados.
+
+![Compilación de todos los programas](capturas/compilacion_completa.png)
+
+## Correcciones respecto a la guía
+
+| Programa | Problema en la guía | Corrección |
+|---|---|---|
+| `TECL.ASM` | Con `IF=1`, la BIOS lee el puerto `60h` antes que el polling y el programa ve el código *break* (`9Eh`) | `CLI` antes del bucle y `STI` después de leer el dato |
+| `LPT_1.ASM`, `MULTI_ST.ASM` | `IN AL, 0379h` y `OUT 0378h, AL` truncan el puerto a 8 bits (advertencia de NASM) | Puerto cargado en `DX` con `IN AL, DX` / `OUT DX, AL` |
+| `LPT_1.ASM` | `LPT1.*` es un nombre de dispositivo reservado en DOS | Archivo renombrado a `LPT_1` |
+| `LPT_1.ASM` | El paso 4 del protocolo (esperar ACK) no estaba implementado | Espera de ACK con límite de reintentos |
+| `MASK_KB.ASM` | Los datos están antes de `start` y se ejecutarían como código en un `.COM` | Datos movidos después del código |
+| `ISR_KB.ASM`, `ISR_TIME.ASM` | `LDS` deja `DS` apuntando a la BIOS antes de imprimir `msg_fin` | `PUSH DS` / `POP DS` alrededor del `LDS` |
+| `ISR_KB.ASM`, `ISR_CHAIN.ASM`, `ISR_TIME.ASM` | Cada pulsación genera dos interrupciones (make y break) | Se ignoran los códigos con el bit 7 en 1, enviando igualmente el EOI |
+| `ISR_CHAIN.ASM` | Solo se da un fragmento; el handler original ya envía el EOI | Programa completo, sin EOI propio |
+| `ISR_CHAIN.ASM` | El nombre de 9 caracteres excede el límite 8.3 de DOS | `lfn=true` y `ver=7.1` en `dosbox.conf` |
+
+## Limitaciones
+
+- Las pulsaciones de teclado se enviaron desde el anfitrión con `SendKeys` de Windows, por lo que los tiempos entre teclas tienen una incertidumbre de decenas de milisegundos.
+- En DOSBox-X no hay impresora conectada: el LPT1 siempre reporta BUSY# = 1 y el ACK nunca baja. Por eso el caso de solo teclado de `MULTI_ST` se comprobó con una variante de ensamblado (`-dIGNORAR_LPT`) y el caso de ambos dispositivos requirió el auxiliar `RETENER.COM`.
+- `MAX_RETRY` de `POLL_T.ASM` está en `0005h` en el código, como pide el checkpoint 2; el valor de la guía (`0FFFFh`) se prueba al ensamblar con `-dMAX_RETRY=0FFFFh`.

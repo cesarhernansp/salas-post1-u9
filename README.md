@@ -264,3 +264,38 @@ ISR_CHAIN
 
 ![ISR_CHAIN compilado e instalado](capturas/p2_cp3_chain_instalado.png)
 ![ISR_CHAIN: eco de DOS y contador propio](capturas/p2_cp3_chain_eco_5_teclas.png)
+
+## Paso 4 — Medición del tiempo entre interrupciones (`ISR_TIME.ASM`)
+
+La BIOS mantiene en `0040h:006Ch` un contador de ticks de 32 bits que IRQ0 (el timer) incrementa unas 18.2 veces por segundo. `ISR_TIME.ASM` lee su palabra baja desde dentro del ISR de IRQ1, sin usar `INT 1Ah`:
+
+1. **Inicialización.** Antes de instalar el ISR, el programa carga `ES` con `0040h`, lee `[ES:006Ch]` y lo guarda en `ticks_prev`.
+2. **En cada interrupción.** El ISR lee el scancode (`IN AL, 60h`), lee otra vez `[ES:006Ch]` y calcula `BX = lectura_actual - ticks_prev`, es decir, los ticks transcurridos desde la interrupción anterior. La resta de 16 bits sigue siendo correcta aunque la palabra baja dé la vuelta. Luego actualiza `ticks_prev`.
+3. **EOI y presentación.** El EOI se envía inmediatamente después de leer el contador y calcular el intervalo, y antes de imprimir con `INT 21h` el mensaje y el número en decimal (`imprimir_decimal`). La razón se discute en la decisión técnica del Paso 5.
+4. **Instalación y restauración** igual que en `ISR_KB.ASM`: `AH=35h`/`AH=25h`, con `PUSH DS`/`POP DS` alrededor de `LDS`.
+
+Las constantes `BIOS_DATA_SEG`, `TICK_COUNT`, `KBD_DATA`, `PIC_CMD` y `PIC_EOI` y las secciones `.data`/`.text` están delimitadas.
+
+```
+nasm -f bin ISR_TIME.ASM -o ISR_TIME.COM
+ISR_TIME
+```
+
+**Corrección respecto a la guía:** igual que en `ISR_KB.ASM`, se ignoran los códigos *break* (el EOI se envía igualmente) para que cada una de las 5 mediciones corresponda a una pulsación real y no a una soltada de tecla, que arrojaría intervalos de 0 o 1 tick.
+
+**Resultado.** Se presionaron cinco teclas con pausas de 1 s, 2 s, 0.15 s y 3 s entre ellas. Los ticks reportados fueron:
+
+| Pulsación | Pausa real aproximada | Ticks reportados | Ticks esperados (18.2/s) |
+|---|---|---|---|
+| 1 | tiempo desde el inicio del programa (unos 7 s) | 135 | ~130 |
+| 2 | 1 s | 19 | ~18 |
+| 3 | 2 s | 37 | ~36 |
+| 4 | 0.15 s | 3 | ~3 |
+| 5 | 3 s | 56 | ~55 |
+
+El número de ticks es proporcional al tiempo real entre pulsaciones (cerca de 18 por segundo), y las pulsaciones muy seguidas dan valores pequeños. Las pausas se programaron con `SendKeys` desde el anfitrión, por eso hay una diferencia de uno o dos ticks.
+
+**Checkpoint 4.** `ISR_TIME.COM` compila sin errores y en cada una de las 5 pulsaciones reporta un número de ticks proporcional al tiempo real esperado entre pulsaciones.
+
+![Compilación de ISR_TIME](capturas/p2_cp4_time_compilacion.png)
+![ISR_TIME: ticks entre pulsaciones](capturas/p2_cp4_time_intervalos.png)

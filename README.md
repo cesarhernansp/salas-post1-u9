@@ -50,3 +50,30 @@ nasm -v
 La salida confirma `NASM version 3.02`.
 
 ![Entorno y NASM](capturas/p1_cp0_entorno_nasm.png)
+
+## Paso 1 — Lectura del scancode por polling (`TECL.ASM`)
+
+El controlador de teclado 8042 expone dos registros:
+
+| Puerto | Registro | Propósito |
+|---|---|---|
+| `60h` | Data Port | Último scancode recibido o byte de respuesta |
+| `64h` | Status Register | El bit 0 (OBF, Output Buffer Full) vale 1 cuando hay un dato listo en `60h` |
+
+`TECL.ASM` sondea el puerto `64h` en el bucle `.poll` con `IN AL, 64h` y `TEST AL, 01h` hasta que OBF vale 1. Después lee el scancode con `IN AL, 60h`, lo guarda en `BL`, lo convierte a hexadecimal nibble por nibble y lo imprime con `INT 21h`, función `02h`.
+
+Compilación y ejecución:
+
+```
+nasm -f bin TECL.ASM -o TECL.COM
+TECL
+```
+
+Al presionar `A`, el programa imprime `1E`, que es el scancode *make* de esa tecla.
+
+**Corrección respecto a la guía.** La primera ejecución con el código tal como aparece en la guía imprimió `9E` en lugar de `1E`: con las interrupciones habilitadas, el handler de la BIOS (IRQ1) leyó el puerto `60h` antes que el bucle de polling y al programa solo le llegó el código de soltar la tecla (*break* = *make* + `80h`). El estudiante agregó `CLI` antes del bucle y `STI` después de leer el dato, de modo que la BIOS no atienda IRQ1 mientras el programa sondea el puerto. Con ese cambio la salida es `1E`.
+
+**Checkpoint 1.** `TECL.COM` compila sin errores y muestra el scancode de la tecla presionada.
+
+![Compilación de TECL y espera de tecla](capturas/p1_cp1_tecl_compilacion.png)
+![TECL muestra 1E al presionar A](capturas/p1_cp1_tecl_scancode.png)

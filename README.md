@@ -95,3 +95,34 @@ Se hicieron dos pruebas sin presionar ninguna tecla. Con `MAX_RETRY=5` aparece e
 
 ![POLL_T con MAX_RETRY=5](capturas/p1_cp2_polling_timeout_5.png)
 ![POLL_T con MAX_RETRY=0FFFFh](capturas/p1_cp2_polling_timeout_FFFF.png)
+
+## Paso 4 — Escritura al puerto paralelo LPT1 (`LPT_1.ASM`)
+
+El puerto paralelo centronics expone tres registros en `0378h`–`037Ah`:
+
+| Puerto | Registro | Bits relevantes |
+|---|---|---|
+| `0378h` | Datos | D0–D7: el byte que se envía al conector |
+| `0379h` | Estado | bit 7 BUSY# (1 = lista), bit 6 ACK# (0 = petición reconocida), bit 5 PE, bit 4 SELECT, bit 3 ERROR# |
+| `037Ah` | Control | bit 0 STROBE, bit 1 AUTOFEED, bit 2 INIT, bit 3 SELECT_IN |
+
+Protocolo implementado, con una etiqueta o bloque por cada fase:
+
+1. `.wait_ready`: sondear `0379h` hasta que el bit 7 (BUSY#) valga 1.
+2. Colocar el carácter `A` (`41h`) en `0378h` con `OUT`.
+3. Pulso de STROBE sobre `037Ah`: se baja el bit 0 (`AND AL, 0FEh`), se espera un retardo corto con `.delay` y se vuelve a subir (`OR AL, 01h`).
+4. `.wait_ack`: esperar ACK (bit 6 en bajo), **acotado** a `ACK_RETRY` reintentos para no bloquear el programa.
+
+Para dejar evidencia del comportamiento, el programa imprime el valor leído de `0379h` y el resultado del ACK.
+
+**Dos correcciones respecto a la guía:**
+
+- **Acceso a puertos mayores que `FFh`.** La guía escribe `IN AL, STATUS_PORT` y `OUT DATA_PORT, AL` con `STATUS_PORT EQU 0379h`. La forma con puerto inmediato solo admite 8 bits, de modo que NASM no marca error sino una advertencia (`unsigned byte exceeds bounds`) y **trunca el puerto a `79h` y `78h`**, que son otros dispositivos. La captura muestra esas advertencias. La versión del repositorio carga el puerto en `DX` y usa `IN AL, DX` / `OUT DX, AL`.
+- **Nombre del archivo.** `LPT1` es un nombre de dispositivo reservado en DOS (y en Windows): DOS interpreta `LPT1.ASM` y `LPT1.COM` como el puerto de impresora, no como archivos (`dir LPT1.*` responde `File not found` y `nasm` no genera el `.COM`). El programa se llama por eso `LPT_1.ASM` / `LPT_1.COM`.
+
+**Comportamiento observado en DOSBox-X.** El acceso a los puertos no produce ningún error. El registro de estado `0379h` devuelve `DFh` (`1101 1111b`): BUSY# = 1 (lista), ACK# = 1 (inactivo), PE = 0, SELECT = 1 y ERROR# = 1. Como BUSY# ya está en 1, el bucle `.wait_ready` termina en la primera iteración. Al no haber impresora, el ACK nunca baja y el programa informa `Sin ACK` tras agotar los reintentos, sin bloquearse.
+
+**Checkpoint 3.** `LPT_1.COM` compila y se ejecuta sin errores de acceso a puerto ni bloqueo.
+
+![Advertencia de la guía: puerto truncado a 8 bits](capturas/p1_cp3_guia_puerto_truncado.png)
+![Ejecución de LPT_1.COM](capturas/p1_cp3_lpt1_ejecucion.png)

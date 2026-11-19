@@ -218,3 +218,26 @@ ISR_KB
 
 ![ISR_KB instalado y esperando teclas](capturas/p2_cp1_isr_kb_instalado.png)
 ![ISR_KB tras cinco pulsaciones](capturas/p2_cp1_isr_kb_5_teclas.png)
+
+## Paso 2 — Enmascaramiento de IRQ1 con el IMR (`MASK_KB.ASM`)
+
+El programa lee el IMR con `IN AL, 21h` y lo guarda en `imr_orig`, activa el bit 1 con `OR AL, 02h` y lo escribe con `OUT 21h, AL`. Espera unos 3 segundos con el contador de ticks de la BIOS (`INT 1Ah`, función `00h`; 55 ticks a 18.2 por segundo) y restaura el valor original. Al terminar vuelve a leer el IMR para comprobar la restauración.
+
+**Correcciones y ampliaciones respecto a la guía:**
+
+- **Datos después del código.** La guía coloca `msg_mask` y `msg_unmask` antes de `start`. En un `.COM` la ejecución empieza en `0100h`, de modo que el procesador ejecutaría el texto como instrucciones. Los datos se movieron al final del programa.
+- **Espera segura.** La comparación se hace con la diferencia `DX - tick_inicial` y `JB`, que sigue funcionando si la palabra baja del contador da la vuelta durante la espera.
+- **Evidencia del enmascaramiento.** Antes de restaurar el IMR, el programa lee el bit OBF del 8042 (`64h`) e informa si quedó un scancode retenido. Además imprime el IMR antes, durante y después.
+
+```
+nasm -f bin MASK_KB.ASM -o MASK_KB.COM
+MASK_KB
+```
+
+**Resultado.** El IMR pasa de `F8h` a `FAh` (se activa el bit 1) y vuelve a `F8h`. Sin presionar teclas, el 8042 queda vacío (`OBF=0`). Al presionar teclas durante el enmascarado, el 8042 conserva el scancode (`OBF=1`) porque la BIOS no lo atiende: no se produce ningún efecto en pantalla durante esos 3 segundos. Al restaurar el IMR, IRQ1 se atiende de nuevo y las teclas pendientes llegan al sistema, por eso `asd` aparece en el prompt después del mensaje final.
+
+**Checkpoint 2.** Durante `MASK_KB.COM` las pulsaciones no producen salida mientras IRQ1 está enmascarado, y al finalizar el programa muestra `IRQ1 restaurado` y termina correctamente.
+
+![IRQ1 enmascarado, en espera](capturas/p2_cp2_mask_enmascarado.png)
+![Con teclas presionadas durante el enmascarado: OBF=1](capturas/p2_cp2_mask_con_teclas.png)
+![Sin presionar teclas: OBF=0](capturas/p2_cp2_mask_sin_teclas.png)

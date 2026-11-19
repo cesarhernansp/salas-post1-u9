@@ -77,3 +77,21 @@ Al presionar `A`, el programa imprime `1E`, que es el scancode *make* de esa tec
 
 ![Compilación de TECL y espera de tecla](capturas/p1_cp1_tecl_compilacion.png)
 ![TECL muestra 1E al presionar A](capturas/p1_cp1_tecl_scancode.png)
+
+## Paso 3 — Polling con timeout (`POLL_T.ASM`)
+
+El bucle de `TECL.ASM` puede bloquear el programa para siempre si el dispositivo nunca responde. `POLL_T.ASM` carga `CX` con `MAX_RETRY` y usa `LOOP .poll`, que decrementa `CX` y repite mientras no sea cero. Si OBF se activa, salta a `.dato_listo` y imprime el byte leído; si `CX` llega a 0, imprime el mensaje de timeout y termina.
+
+`MAX_RETRY` vale `0005h` por defecto en el archivo, que es el valor pequeño que pide el checkpoint, y puede cambiarse al ensamblar sin editar el código:
+
+```
+nasm -f bin POLL_T.ASM -o POLL_T.COM
+nasm -f bin -dMAX_RETRY=0FFFFh POLL_T.ASM -o POLL_T.COM
+```
+
+Se hicieron dos pruebas sin presionar ninguna tecla. Con `MAX_RETRY=5` aparece el mensaje de timeout, como pide el checkpoint. Con `MAX_RETRY=0FFFFh` (el valor de la guía) el timeout también aparece: 65 535 iteraciones duran apenas unos milisegundos en el emulador, un lapso demasiado corto para que una persona presione una tecla. Esta observación respalda la decisión técnica del Paso 6: el contador mide iteraciones, no tiempo.
+
+**Checkpoint 2.** `POLL_T.COM` muestra el mensaje de timeout cuando `MAX_RETRY` es pequeño y no se presiona ninguna tecla.
+
+![POLL_T con MAX_RETRY=5](capturas/p1_cp2_polling_timeout_5.png)
+![POLL_T con MAX_RETRY=0FFFFh](capturas/p1_cp2_polling_timeout_FFFF.png)

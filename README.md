@@ -174,3 +174,47 @@ Si LPT1 reporta su bit de listo en 1 de forma permanente, el bucle `.poll` de `M
 
 ![Decisión 1](capturas/p1_cp5_decision1.png)
 ![Decisión 2](capturas/p1_cp5_decision2.png)
+
+---
+
+# Parte 2 — ISR personalizado y programación del PIC 8259A
+
+## Configuración del entorno
+
+El directorio de trabajo de esta parte, `C:\U9P2`, se creó también desde DOSBox-X con `mkdir C:\U9P2`.
+
+![Entorno de la Parte 2](capturas/p2_cp0_entorno_u9p2.png)
+
+## Conceptos: PIC 8259A, vector de IRQ1, IMR y EOI
+
+El PIC 8259A maestro traduce las líneas IRQ0–IRQ7 a vectores de interrupción a partir de la base `08h`: IRQ0 (timer) es `INT 08h`, **IRQ1 (teclado) es `INT 09h`** e IRQ7 (LPT1) es `INT 0Fh`. El CPU atiende una interrupción solo si el flag `IF` está en 1 y si la IRQ no está enmascarada.
+
+| Elemento | Puerto | Función |
+|---|---|---|
+| IMR (Interrupt Mask Register) | `21h` | Un bit en 1 enmascara (deshabilita) la IRQ correspondiente; en 0 la habilita. IRQ1 es el bit 1 (`02h`) |
+| Comando / EOI | `20h` | Al escribir `20h` (End Of Interrupt) el ISR avisa al PIC que terminó, y el PIC puede despachar otras IRQ pendientes |
+
+Los vectores se leen y fijan con `INT 21h`: `AH=35h` devuelve el handler actual en `ES:BX`, y `AH=25h` instala uno nuevo desde `DS:DX`.
+
+## Paso 1 — Instalación del ISR propio (`ISR_KB.ASM`)
+
+El programa (1) guarda el vector original de `INT 09h`, (2) instala `mi_isr`, (3) espera cinco pulsaciones en un bucle activo sobre `contador` y (4) restaura el vector original. Las secciones `.data` (constantes, variables y mensajes) y `.text` están delimitadas. Para dejar evidencia de cómo se instala y restaura el vector, el programa imprime `SEG:OFF` del vector tres veces: antes de instalar, después de instalar (releído con `AH=35h`) y después de restaurar.
+
+El ISR hace lo siguiente, en este orden: guarda `AX`, `DX` y `DS`; apunta `DS` a su segmento; lee y descarta el scancode con `IN AL, 60h`; imprime el mensaje; incrementa `contador`; envía el EOI (`OUT 20h, AL`) y restaura los registros antes del `IRET`.
+
+```
+nasm -f bin ISR_KB.ASM -o ISR_KB.COM
+ISR_KB
+```
+
+**Correcciones respecto a la guía:**
+
+- **`DS` tras `LDS`.** En la restauración, `LDS DX, [old_isr]` carga `DS` con el segmento del handler original (la BIOS), y el código de la guía imprime después `msg_fin` con ese `DS`, de modo que `DX` ya no apuntaría al texto del programa. Aquí `DS` se guarda con `PUSH DS` antes del `LDS` y se repone con `POP DS`.
+- **Make y break.** Cada pulsación completa genera dos interrupciones de IRQ1: el scancode *make* al presionar y el *break* (con el bit 7 en 1) al soltar. Para que el contador cuente pulsaciones y no interrupciones, el ISR descarta los códigos con el bit 7 en 1 (`TEST AL, 80h`), pero sigue enviando el EOI en ese caso.
+
+**Resultado.** El vector original es `F000:E987` (la BIOS), el instalado es `12E6:016C` (dentro del programa) y tras la restauración vuelve a `F000:E987`. El mensaje aparece exactamente cinco veces.
+
+**Checkpoint 1.** `ISR_KB.COM` compila sin errores, muestra `Tecla detectada por ISR propio` cinco veces y termina con el mensaje de restauración.
+
+![ISR_KB instalado y esperando teclas](capturas/p2_cp1_isr_kb_instalado.png)
+![ISR_KB tras cinco pulsaciones](capturas/p2_cp1_isr_kb_5_teclas.png)

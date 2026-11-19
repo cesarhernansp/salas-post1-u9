@@ -241,3 +241,26 @@ MASK_KB
 ![IRQ1 enmascarado, en espera](capturas/p2_cp2_mask_enmascarado.png)
 ![Con teclas presionadas durante el enmascarado: OBF=1](capturas/p2_cp2_mask_con_teclas.png)
 ![Sin presionar teclas: OBF=0](capturas/p2_cp2_mask_sin_teclas.png)
+
+## Paso 3 — Encadenamiento del ISR (`ISR_CHAIN.ASM`)
+
+`ISR_CHAIN.ASM` parte de `ISR_KB.ASM`, pero en lugar de reemplazar el handler original lo llama después de ejecutar el código propio. La guía solo da el fragmento del ISR; el programa completo lo extiende así:
+
+1. El ISR (`mi_isr_chain`) lee el scancode con `IN AL, 60h`, ignora los códigos *break*, guarda el último *make* en `ultimo_scan` e incrementa su `contador`.
+2. Restaura `DS` y `AX` y encadena con `PUSHF` + `CALL FAR [CS:old_isr]`. El `PUSHF` simula lo que haría una `INT` (el handler original termina con `IRET`, que espera encontrar flags en la pila), y `old_isr` contiene `SEG:OFF` en el orden en que lo guarda `AH=35h`. Se usa el prefijo `CS:` porque, tras el `POP DS`, el segmento de datos ya no es el del programa.
+3. **No se envía EOI propio.** El handler original de la BIOS lee el scancode, lo coloca en el buffer del teclado y envía él mismo el EOI al PIC; un segundo EOI sería redundante y podría desactivar otra IRQ en servicio.
+4. Para comprobar el encadenamiento, el bucle principal hace de eco de DOS: lee del buffer de la BIOS con `INT 21h`, `AH=06h` (sin esperar) y repite cada carácter en pantalla.
+
+```
+nasm -f bin ISR_CHAIN.ASM -o ISR_CHAIN.COM
+ISR_CHAIN
+```
+
+**Nombres largos en DOS.** `ISR_CHAIN` tiene nueve caracteres, más que el límite 8.3 de DOS, y con la configuración inicial `nasm` respondía `unable to open input file`. Se agregó `ver=7.1` y `lfn=true` a `dosbox.conf`, con lo que DOSBox-X ofrece nombres largos y el archivo conserva el nombre que pide la guía (`dir` lo muestra como `ISR_CH~1` en formato corto).
+
+**Resultado.** Se escribieron `h`, `o`, `l`, `a`, `x`. El eco `holax` aparece mientras el ISR está instalado, el contador propio registra 5 teclas y el último scancode *make* es `2Dh`, el de la tecla `x`. Comparado con `ISR_KB.COM`, que reemplaza el handler y por eso no deja ningún carácter en el buffer de la BIOS, aquí el sistema sigue recibiendo las teclas. El vector original `F000:E987` se restaura al final.
+
+**Checkpoint 3.** `ISR_CHAIN.COM` registra las teclas en el contador propio y el sistema responde normalmente a las pulsaciones (el eco de DOS sigue funcionando).
+
+![ISR_CHAIN compilado e instalado](capturas/p2_cp3_chain_instalado.png)
+![ISR_CHAIN: eco de DOS y contador propio](capturas/p2_cp3_chain_eco_5_teclas.png)

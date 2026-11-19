@@ -299,3 +299,20 @@ El número de ticks es proporcional al tiempo real entre pulsaciones (cerca de 1
 
 ![Compilación de ISR_TIME](capturas/p2_cp4_time_compilacion.png)
 ![ISR_TIME: ticks entre pulsaciones](capturas/p2_cp4_time_intervalos.png)
+
+## Paso 5 — Decisión técnica: ¿en qué punto del ISR debe ir el EOI?
+
+<!-- decision-3:inicio -->
+Si el EOI se envía después de imprimir, como en `ISR_KB.ASM`, el PIC 8259A conserva el bit de IRQ1 en servicio durante todo el tiempo que tarda `INT 21h`, que puede ser de varios milisegundos, y mientras tanto no puede despachar otras IRQ de igual o menor prioridad que ya estén pendientes: su latencia aumenta sin que el hardware lo necesite. Como el ISR de este laboratorio no ejecuta `STI`, el CPU mantiene `IF=0` hasta el `IRET`, así que enviar el EOI temprano tampoco permite que la misma IRQ1 reentre en el ISR; esa protección la da `IF`, no el PIC. Hay que distinguir dos cosas: permitir que el PIC despache otras IRQ pendientes, que es lo que habilita un EOI temprano, y permitir que esta misma IRQ1 reentre, que solo ocurriría si algo habilita las interrupciones antes del `IRET`. Con `IF=0` el efecto práctico de enviar el EOI antes es pequeño, pero es el orden correcto, porque no depende de ese detalle. `ISR_TIME.ASM` envía el EOI justo después de leer el scancode y el contador de ticks, que es el trabajo estrictamente necesario sobre el hardware, y deja la impresión para después. `ISR_KB.ASM` lo envía justo antes del `IRET`, tras imprimir. La práctica recomendada es la de `ISR_TIME.ASM`: confirmar al PIC apenas termina el trabajo sobre el dispositivo, y dejar lo largo para después. Enviarlo demasiado tarde o nunca bloquea las IRQ de menor prioridad; enviarlo demasiado temprano, si el código posterior habilita interrupciones, expone al ISR a reentradas.
+<!-- decision-3:fin -->
+
+## Paso 6 — Decisión técnica: ¿polling o interrupción para el mismo dispositivo?
+
+<!-- decision-4:inicio -->
+El polling de `TECL.ASM` es inaceptable en cualquier programa que deba seguir haciendo trabajo útil mientras espera la tecla, como un juego que anima la pantalla o un programa que atiende otro periférico, porque el busy-wait acapara el CPU por completo en el bucle `.poll`. En cuanto a la latencia, el ISR de `ISR_KB.ASM` responde con menor latencia: el hardware activa la línea IRQ1 y el PIC y el CPU transfieren el control de inmediato, mientras que el polling depende de que la CPU vuelva a ejecutar el bucle con la frecuencia suficiente, y su latencia crece si el bucle hace más trabajo entre consultas. Para un dispositivo lento y esporádico como el teclado, donde pueden pasar minutos entre eventos, mantener el CPU en un bucle de espera activa es un desperdicio de ciclos de procesador, de energía y de tiempo que otros procesos podrían aprovechar, mientras que el enfoque basado en interrupciones lo evita por diseño: el programa principal sigue ejecutando y solo se interrumpe cuando ocurre el evento. En este laboratorio, tanto `TECL.ASM` como `ISR_KB.ASM` dan resultados correctos, pero el polling queda reservado para esperas muy cortas, como confirmar que un dispositivo terminó una operación en microsegundos, donde instalar y desinstalar un ISR no se justifica. El costo del ISR es mayor complejidad: guardar y restaurar el vector, enviar el EOI y no bloquear el sistema.
+<!-- decision-4:fin -->
+
+**Checkpoint 5.** Las dos decisiones técnicas de la Parte 2 (Pasos 5 y 6) están incluidas arriba. Las capturas muestran cada texto tal como está en este README.
+
+![Decisión 3](capturas/p2_cp5_decision1.png)
+![Decisión 4](capturas/p2_cp5_decision2.png)

@@ -1,0 +1,5 @@
+nasm.exe
+cwsdpmi.exe
+stdout.txt
+stderr.txt
+*.tmp

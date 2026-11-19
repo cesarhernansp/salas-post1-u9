@@ -126,3 +126,34 @@ Para dejar evidencia del comportamiento, el programa imprime el valor leído de 
 
 ![Advertencia de la guía: puerto truncado a 8 bits](capturas/p1_cp3_guia_puerto_truncado.png)
 ![Ejecución de LPT_1.COM](capturas/p1_cp3_lpt1_ejecucion.png)
+
+## Paso 5 — Polling combinado de dos puertos de estado (`MULTI_ST.ASM`)
+
+`TECL.ASM` y `POLL_T.ASM` sondean un único puerto. `MULTI_ST.ASM` espera el primero de dos eventos distintos: OBF del 8042 (bit 0 de `64h`) o el bit de listo de LPT1 (bit 7 de `0379h`). La combinación funciona así:
+
+1. De cada registro se aísla el bit relevante con `AND` y se normaliza a 0 o 1 (para LPT1, con `SHR AL, 7`).
+2. Las banderas quedan separadas: `BL` = teclado y `BH` = LPT1.
+3. Se combinan con `MOV AL, BL` y `OR AL, BH`. El resultado solo vale cero cuando ningún dispositivo está listo, y entonces `JZ .poll` repite el bucle.
+4. Al salir, el OR ya no dice quién disparó la condición; por eso el programa examina `BL` y `BH` por separado con `TEST` e imprime el mensaje de cada dispositivo que estaba listo (uno, otro o ambos).
+
+Las constantes `KBD_STATUS_PORT`, `KBD_OBF_MASK`, `LPT_STATUS_PORT` y `LPT_READY_MASK` dan nombre a los puertos y a las máscaras.
+
+**Correcciones respecto a la guía:** el puerto `0379h` se lee con `IN AL, DX` (misma razón que en el Paso 4) y se agregó `CLI`/`STI` alrededor del bucle (misma razón que en el Paso 1).
+
+**Cómo se obtuvieron los tres casos.** En DOSBox-X el LPT1 reporta siempre BUSY# = 1, de modo que la primera iteración ya termina el bucle:
+
+- **Solo LPT1:** `MULTI_ST` sin tocar el teclado imprime únicamente `LPT1 listo (BUSY#=1).`
+- **Ambos:** para que OBF ya valga 1 cuando empieza el bucle, el auxiliar `RETENER.COM` (no es parte de la guía) enmascara IRQ1 durante unos 8 segundos y la tecla `a` queda retenida en el buffer del 8042. Al ejecutar después `MULTI_ST`, las dos banderas valen 1 y se imprimen los dos mensajes.
+- **Solo teclado:** como LPT1 siempre está listo, la rama solo-teclado no es alcanzable en DOSBox-X. Para comprobarla se ensambló una variante con `-dIGNORAR_LPT`, que fuerza `BH = 0`; el programa espera la tecla y solo imprime `Teclado listo (OBF=1).`
+
+```
+nasm -f bin MULTI_ST.ASM -o MULTI_ST.COM
+nasm -f bin RETENER.ASM -o RETENER.COM
+nasm -f bin -dIGNORAR_LPT MULTI_ST.ASM -o MULTI_K.COM
+```
+
+**Checkpoint 4.** `MULTI_ST.COM` compila sin errores y en cada ejecución identifica cuál de los puertos disparó la salida del bucle.
+
+![Solo LPT1](capturas/p1_cp4_multi_solo_lpt1.png)
+![Teclado y LPT1](capturas/p1_cp4_multi_ambos.png)
+![Solo teclado (variante IGNORAR_LPT)](capturas/p1_cp4_multi_solo_teclado.png)

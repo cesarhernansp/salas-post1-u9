@@ -157,3 +157,20 @@ nasm -f bin -dIGNORAR_LPT MULTI_ST.ASM -o MULTI_K.COM
 ![Solo LPT1](capturas/p1_cp4_multi_solo_lpt1.png)
 ![Teclado y LPT1](capturas/p1_cp4_multi_ambos.png)
 ![Solo teclado (variante IGNORAR_LPT)](capturas/p1_cp4_multi_solo_teclado.png)
+
+## Paso 6 — Decisión técnica: ¿polling sin límite o polling con timeout configurable?
+
+<!-- decision-1:inicio -->
+El estudiante considera que el bucle sin límite de `TECL.ASM` es aceptable únicamente cuando el dispositivo está garantizado a responder, como en un programa de demostración donde el propio estudiante presiona la tecla: si la tecla nunca llega, basta con que la persona actúe. En cualquier programa que no pueda asumir que el dispositivo responderá, el timeout configurable de `POLL_T.ASM` es indispensable, porque convierte una espera indefinida en una espera acotada que permite informar el fallo y terminar con limpieza. El costo es que `MAX_RETRY` puede dar falsos timeouts: si se reduce demasiado, por ejemplo a `5h` en lugar de `0FFFFh`, el programa se rinde antes de que un dispositivo lento pero funcional alcance a responder, y reporta un fallo que no existe. La Parte 1 lo mostró de forma directa: con `MAX_RETRY=5` el timeout es inmediato, y con `0FFFFh` también expiró antes de que una persona pudiera presionar una tecla. La razón de fondo es que el contador mide iteraciones del bucle y no tiempo real. Cuántas iteraciones equivalen a un segundo depende de la velocidad de la CPU o del emulador (por ejemplo, del valor de `cycles`), de modo que es una medida de tiempo indirecta y poco confiable. El contador de ticks de `0040h:006Ch`, impulsado por IRQ0 a unos 18.2 ticks por segundo, mide tiempo real sin importar qué tan rápido se ejecute el bucle que lo consulta, y por eso es la forma correcta de acotar una espera en segundos.
+<!-- decision-1:fin -->
+
+## Paso 7 — Decisión técnica: ¿combinar las banderas con OR o verificarlas por separado?
+
+<!-- decision-2:inicio -->
+Si LPT1 reporta su bit de listo en 1 de forma permanente, el bucle `.poll` de `MULTI_ST.ASM` se detiene en la primera iteración sin importar el estado del teclado. Eso fue exactamente lo observado en DOSBox-X, donde `0379h` devuelve `DFh`: el programa termina de inmediato y la espera combinada pierde su propósito, porque nunca espera realmente al segundo dispositivo; para ver el caso de ambos dispositivos hubo que retener antes una tecla con un auxiliar. Después de salir del bucle es necesario examinar `BL` y `BH` por separado, porque el OR descarta la información de cuál bandera individual causó la salida: solo informa que al menos una vale 1, y el programa necesita saber cuál para atender al dispositivo correcto, o a ambos si coincidieron. Si en lugar de OR se combinaran las banderas con AND, el programa esperaría que ambas condiciones se cumplan simultáneamente. Eso tiene sentido en una sincronización tipo rendezvous: por ejemplo, no enviar un dato a la impresora hasta que el usuario haya presionado una tecla y la impresora esté lista. El OR, en cambio, solo necesita que ocurra el primero de los dos eventos, y es la herramienta adecuada cuando cualquiera de ellos basta para continuar.
+<!-- decision-2:fin -->
+
+**Checkpoint 5.** Las dos decisiones técnicas de la Parte 1 (Pasos 6 y 7) están incluidas arriba. Las capturas muestran cada texto tal como está en este README.
+
+![Decisión 1](capturas/p1_cp5_decision1.png)
+![Decisión 2](capturas/p1_cp5_decision2.png)
